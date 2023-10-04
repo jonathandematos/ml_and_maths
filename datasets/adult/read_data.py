@@ -1,4 +1,11 @@
+from warnings import simplefilter
+simplefilter(action='ignore', category=FutureWarning)
 import numpy as np
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import classification_report
+from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GridSearchCV
+from prettytable import PrettyTable
 
 workclass = ["Private", "Self-emp-not-inc", "Self-emp-inc", "Federal-gov", "Local-gov", "State-gov", "Without-pay", "Never-worked"]
 education = ["Bachelors", "Some-college", "11th", "HS-grad", "Prof-school", "Assoc-acdm", "Assoc-voc", "9th", "7th-8th", "12th", "Masters", "1st-4th", "10th", "Doctorate", "5th-6th", "Preschool"]
@@ -28,7 +35,70 @@ with open("adult.data") as fp:
             line[13] = nativecountry.index(line[13])
             line[14] = category.index(line[14])
             dataset.append(line)
-
-dataset = np.array(dataset)
-#dataset = np.array(dataset).astype("float")
-print(dataset)
+#
+dataset = np.array(dataset).astype("float")
+X = dataset[:,:14] # atributos
+Y = dataset[:,14].astype(int) # categorias (devem ser inteiros)
+#
+print(dataset.shape, X.shape, Y.shape)
+#
+# Treino e verificacao de acuracia com todos os dados (somente para teste)
+#
+knn = KNeighborsClassifier(n_neighbors=3)
+knn.fit(X,Y)
+Y_pred = knn.predict(X)
+print(classification_report(Y, Y_pred))
+#
+# Exemplo de Hold-out
+#
+X_train_val, X_test, Y_train_val, Y_test = train_test_split(X, Y, test_size=0.3)
+X_train, X_val, Y_train, Y_val = train_test_split(X_train_val, Y_train_val, test_size=0.28)
+#
+print(X_train.shape, Y_train.shape)
+print(X_val.shape, Y_val.shape)
+print(X_test.shape, Y_test.shape)
+#
+knn = KNeighborsClassifier(n_neighbors=3)
+knn.fit(X_train,Y_train)
+print("## Treino ##")
+Y_train_pred = knn.predict(X_train)
+print(classification_report(Y_train, Y_train_pred))
+print("## Teste ##")
+Y_test_pred = knn.predict(X_test)
+print(classification_report(Y_test, Y_test_pred))
+print("## Validacao ##")
+Y_val_pred = knn.predict(X_val)
+print(classification_report(Y_val, Y_val_pred))
+#
+# Exemplo de cross-validation com otimizacao de hiperparametro
+#
+parametros = {'metric':('cosine', 'minkowski', 'manhattan'), 'n_neighbors':[ 7, 10, 13]}
+#parametros = {'metric':('cosine', 'minkowski'), 'n_neighbors':[7, 10, 13]}
+knn = KNeighborsClassifier()
+search = GridSearchCV(knn, parametros, verbose=2, n_jobs=4)
+search.fit(X_train_val, Y_train_val)
+#
+tabela = PrettyTable()
+#
+linha = list()
+linha.append("")
+for i in range(search.cv_results_['split0_test_score'].shape[0]):
+    linha.append(i)
+tabela.field_names = linha
+for j in search.cv_results_.keys():
+    if(j == 'params'):
+        continue
+    linha = list()
+    linha.append(j)
+    for i in range(search.cv_results_['split0_test_score'].shape[0]):
+        if(isinstance(search.cv_results_[j][i], float)):
+            linha.append("{:5.2f}".format(search.cv_results_[j][i]))
+        else:
+            linha.append("{}".format(search.cv_results_[j][i]))
+    tabela.add_row(linha)
+#
+print(tabela)
+print("Best params:")
+print(search.best_params_)
+Y_test_pred = search.best_estimator_.predict(X_test)
+print(classification_report(Y_test, Y_test_pred))
